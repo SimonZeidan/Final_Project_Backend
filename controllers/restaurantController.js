@@ -2,7 +2,23 @@ const Restaurant = require('../models/restaurantModel');
 const validator = require('validator');
 const Menu = require("../models/menuModel");
 const Item = require("../models/itemModel");
-const { text } = require('express');
+const {signToken, sendMail} = require("./sharedController");
+const {promisify} = require("util");
+const jwt = require("jsonwebtoken");
+
+
+const createSendToken = (restaurant, statusCode, res, message) => {
+  const token = signToken(restaurant._id);
+
+  res.status(statusCode).json({
+    status: "success",
+    token,
+    data: {
+      message,
+      restaurant,
+    },
+  });
+};
 
 exports.signup = async (req, res) => {
     try {
@@ -35,7 +51,9 @@ exports.signup = async (req, res) => {
         openingHours: req.body.openingHours,
         address: req.body.address
       });
-      res.status(201).json({message: "Sign up successfully", data: {newRestaurant}});
+      // res.status(201).json({message: "Sign up successfully", data: {newRestaurant}});
+      const message = "Sign up successfully!!";
+      createSendToken(newRestaurant, 201, res, message);
     } catch (err) {
       res.status(400).json({ message: err.message });
       console.log(err);
@@ -52,8 +70,12 @@ exports.signup = async (req, res) => {
         return res.status(401).json({ message: "Incorrect email or password" });
       }
   
-      res.status(201).json({message: "Login successfully", data: {restaurant}});
+      // res.status(201).json({message: "Login successfully", data: {restaurant}});
+      const message = "Login successfully!!";
+
+      createSendToken(restaurant, 200, res, message);
     } catch (err) {
+      res.status(400).json({ message: err.message });
       console.log(err);
     }
   };
@@ -66,6 +88,7 @@ exports.signup = async (req, res) => {
       }
       res.status(200).json({data: restaurant});
     } catch (err) {
+      res.status(400).json({ message: err.message });
       console.log(err);
       
     }
@@ -76,6 +99,7 @@ exports.signup = async (req, res) => {
       const restaurants = await Restaurant.find();
       return res.status(200).json({data: restaurants});
     }catch(err){
+      res.status(400).json({ message: err.message });
       console.log(err);
     }
   }
@@ -112,6 +136,7 @@ exports.signup = async (req, res) => {
     });
     res.status(201).json({message: "Menu created Successfully!", data: newMenu});
     }catch(err){
+      res.status(400).json({ message: err.message });
       console.log(err);
     }
   }
@@ -129,6 +154,7 @@ exports.signup = async (req, res) => {
         }
         return res.status(200).json({data: menu});
     }catch(err){
+      res.status(400).json({ message: err.message });
       console.log(err)
     }
   }
@@ -145,6 +171,7 @@ exports.signup = async (req, res) => {
       }
       return res.status(200).json({data: menu});
     } catch (err) {
+      res.status(400).json({ message: err.message });
       console.log(err);
     }
   }
@@ -162,6 +189,7 @@ exports.signup = async (req, res) => {
       )
       res.status(200).json({data: items});   
     }catch(err){
+      res.status(400).json({ message: err.message });
       console.log(err);
     }
   }
@@ -184,6 +212,7 @@ exports.signup = async (req, res) => {
       });
       res.status(200).json({message: "Item added to the menu successfully!"})
     } catch (err) {
+      res.status(400).json({ message: err.message });
       console.log(err);      
     }
   }
@@ -196,6 +225,180 @@ exports.signup = async (req, res) => {
       res.status(200).json({data: restaurants});
       
     } catch (err) {
+      res.status(400).json({ message: err.message });
       console.log(err);      
     }
   }
+
+  exports.uploadRestaurantImage = async (req, res) => {
+    try {
+      const restaurant = await Restaurant.findById(req.body.restaurantId);
+        if(!restaurant){
+            return res.status(400).json({ message: "Restaurant doesn't exits!"});
+        }
+        if(req.file && req.body.imageName){
+          const imageUrl = await sharedController.uploadImage(req.file);
+              console.log(imageUrl);
+              if(!imageUrl){
+                  return res.status(400).json({ message: "Error in uploading the image"});
+              }
+            
+          req.restaurant = await Restaurant.findByIdAndUpdate(req.restaurant._id, {
+            restaurantImageUrl: imageUrl});
+        return res.status(200).json({ message: "Image uploaded successfully" });
+      }
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      console.log(err); 
+    }
+  }
+
+  exports.protect = async (req, res, next) => {
+    try {
+      // check if the restaurant token exist
+      let token;
+      if (
+        req.headers.authorization &&
+        req.headers.authorization.startsWith("Bearer")
+      ) {
+        token = req.headers.authorization.split(" ")[1];
+      }
+  
+      if (!token) {
+        return res.status(401).json({
+          message: "You are not logged in - Please log in to get access",
+        });
+      }
+  
+      // token verification
+      let decoded;
+      try {
+        decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+      } catch (error) {
+        if (error.name === "JsonWebTokenError") {
+          return res
+            .status(401)
+            .json({ message: "Invalid token. Please log in" });
+        } else if (error.name === "TokenExpiredError") {
+          return res.status(401).json({
+            message: "Your session token has expired !! Please login again",
+          });
+        }
+      }
+  
+      // check if user still exists
+      const currentRestaurant = await Restaurant.findById(decoded.id);
+  
+      if (!currentRestaurant) {
+        return res.status(401).json({
+          message: "The restaurant belonging to this token does no longer exist.",
+        });
+      }
+  
+      // check if the restaurant changed the password after the token was created
+      if (currentRestaurant.passwordChangedAfterTokenIssued(decoded.iat)) {
+        return res.status(401).json({
+          message: " Your password has been changed recently. Please login again",
+        });
+      }
+  
+      // Add the valid logged in user to other requests
+      req.restaurant = currentRestaurant;
+  
+      next();
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  exports.forgotPassword = async (req, res) => {
+    try {
+      // find if the user with the provided email exists
+      const restaurant = await Restaurant.findOne({ email: req.body.email });
+      if (!restaurant) {
+        return res
+          .status(404)
+          .json({ message: " The user with the provided email does not exist" });
+      }
+  
+      // Create the random token
+      const resetToken = restaurant.generatePasswordResetToken();
+      await restaurant.save({ validateBeforeSave: false });
+  
+      // send the token via email
+  
+      const url = `${req.protocol}://${req.get(
+        "host"
+      )}/api/restaurant/resetPassword/${resetToken}`;
+      const msg = `Forgot your Password ? Reset it by visting the following link: ${url}`;
+  
+      try {
+        await sendMail({
+          email: restaurant.email,
+          subject: "Your Password Reset Token (valid for 10 min)",
+          message: msg,
+        });
+        res.status(200).json({
+          status: "success",
+          message:
+            " The Reset token was successfully sent to your email address.",
+        });
+      } catch (err) {
+        restaurant.passwordResetToken = undefined;
+        restaurant.passwordResetExpires = undefined;
+        await restaurant.save({ validateBeforeSave: false });
+  
+        res.status(500).json({
+          status: "success",
+          message:
+            " An error occurred while sending the email. Please try again in a moment",
+        });
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  };
+  
+  exports.resetPassword = async (req, res) => {
+    try {
+      const hashtoken = crypto
+        .createHash("sha256")
+        .update(req.params.token)
+        .digest("hex");
+  
+      const restaurant = await Restaurant.findOne({
+        passwordResetToken: hashtoken,
+        passwordResetExpires: { $gt: Date.now() },
+      });
+  
+      if (!restaurant) {
+        return res.status(400).json({
+          message:
+            " The token is invalid or expired. Please submit another request",
+        });
+      }
+  
+      if (req.body.password.length < 8) {
+        return res.status(400).json({
+          message: "Password length must be at least 8 characters",
+        });
+      }
+  
+      if (req.body.password !== req.body.passwordConfirm) {
+        return res.status(400).json({
+          message: "Password and PasswordConfirm does not match",
+        });
+      }
+  
+      restaurant.password = req.body.password;
+      restaurant.passwordConfirm = req.body.passwordConfirm;
+      restaurant.passwordResetToken = undefined;
+      restaurant.passwordResetExpires = undefined;
+  
+      await restaurant.save();
+  
+      createSendToken(restaurant, 200, res);
+    } catch (err) {
+      console.log(err);
+    }
+  };

@@ -1,12 +1,16 @@
 const Item = require("../models/itemModel");
 const sharedController = require("./sharedController");
-
+const Restaurant = require("../models/restaurantModel");
 
 
 exports.createItem = async (req, res) => {
 
     try {
         const item = await Item.findOne({name: req.body.itemName});
+        const restaurant = await Restaurant.findById(req.body.restaurantId);
+        if(!restaurant){
+            return res.status(400).json({ message: "Restaurant doesn't exits!"});
+        }
         if(item){
             return res.status(400).json({ message: "Item already exits!"});
         }
@@ -22,6 +26,7 @@ exports.createItem = async (req, res) => {
                 name: req.body.itemName,
                 price: req.body.price,
                 description: req.body.description,
+                restaurant: req.body.restaurantId,
                 imageUrl: imageUrl
             });
             await newItem.save();
@@ -31,11 +36,13 @@ exports.createItem = async (req, res) => {
             const newItem = await Item.create({
                 name: req.body.itemName,
                 price: req.body.price,
+                restaurant: req.body.restaurantId,
                 description: req.body.description
             });
             res.status(201).json({message: "Item Created Successfully!!", data: newItem});
         }      
     }catch (err){
+        res.status(400).json({ message: err.message });
         console.log(err);
     }
 
@@ -49,6 +56,22 @@ exports.getItem = async( req, res) => {
         }
         res.status(200).json({data: item});
     } catch (err) {
+        res.status(400).json({ message: err.message });
+        console.log(err);
+        
+    }
+}
+
+exports.getItems = async( req, res) => {
+    try {
+        const restaurant = Restaurant.findById(req.body.restaurantId)
+        const items = await Item.find({restaurant: req.body.restaurantId});
+        if(!restaurant){
+            return res.status(400).json({ message: "Restaurant doesn't exits!"});
+        }
+        res.status(200).json({data: items});
+    } catch (err) {
+        res.status(400).json({ message: err.message });
         console.log(err);
         
     }

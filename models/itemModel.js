@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-
+const Schema = mongoose.Schema;
 const itemSchema = new mongoose.Schema({
     name:{
         type: String,
@@ -12,6 +12,10 @@ const itemSchema = new mongoose.Schema({
     },
     description: {
         type: String,
+    },
+    restaurant: {
+        type: Schema.Types.ObjectId,
+        ref: "Restaurant"
     },
     imageUrl: {
         type: String,
