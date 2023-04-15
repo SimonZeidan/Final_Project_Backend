@@ -9,6 +9,6 @@ const itemController = require("../controllers/itemController");
 
 router.post("/createItem",upload.single('imageFile'),restaurantController.protect, itemController.createItem);
 router.get("/getItem/:itemId",customerController.protect, itemController.getItem);
-router.get("/getItems", restaurantController.protect, itemController.getItems);
+router.get("/getItems/:restaurantId", restaurantController.protect, itemController.getItems);
 
 module.exports = router;

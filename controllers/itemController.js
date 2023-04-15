@@ -11,7 +11,7 @@ exports.createItem = async (req, res) => {
         if(!restaurant){
             return res.status(400).json({ message: "Restaurant doesn't exits!"});
         }
-        if(item){
+        if(item && item.restaurant === restaurant._id){
             return res.status(400).json({ message: "Item already exits!"});
         }
         if(req.file && req.body.imageName){
@@ -64,8 +64,8 @@ exports.getItem = async( req, res) => {
 
 exports.getItems = async( req, res) => {
     try {
-        const restaurant = Restaurant.findById(req.body.restaurantId)
-        const items = await Item.find({restaurant: req.body.restaurantId});
+        const restaurant = Restaurant.findById(req.params.restaurantId)
+        const items = await Item.find({restaurant: req.params.restaurantId});
         if(!restaurant){
             return res.status(400).json({ message: "Restaurant doesn't exits!"});
         }
